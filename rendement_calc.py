@@ -150,12 +150,6 @@ def rendement_page():
 
     if results:
         df_res = pd.DataFrame(results)
-        # On renomme la colonne pour bien afficher "Conversion élec par kJ"
-        df_res = df_res.rename(
-            columns={
-                "Conversion élec par kJ (kJ_out/kJ_in)": "Conversion élec par kJ (kJ_out/kJ_in)",
-            }
-        )
         st.dataframe(
             df_res[
                 [
@@ -321,7 +315,7 @@ def zpinch_page():
 
 
 # ============================
-#  3) PAGE SCÉNARIOS IDÉAUX
+#  3) PAGE SCÉNARIOS IDÉAUX FUSION
 # ============================
 
 IDEAL_SCENARIOS = {
@@ -395,20 +389,25 @@ IDEAL_SCENARIOS = {
     ],
 }
 
+# Centrales classiques : charbon, gaz, fission
+# Rendements globaux typiques
+CLASSIC_PLANTS = [
+    {"Technologie": "Charbon (supercritique)", "eta": 0.38},
+    {"Technologie": "Gaz (cycle combiné)", "eta": 0.55},
+    {"Technologie": "Fission (PWR)", "eta": 0.33},
+]
+
 
 def ideal_scenarios_page():
-    st.title("3) Scénarios idéaux (Tokamak / Polywell / Z-pinch / Farnsworth)")
+    st.title("3) Scénarios idéaux fusion + centrales classiques")
 
     st.markdown(
         """
-        Ici, on utilise des **scénarios idéaux hypothétiques** pour chaque concept :  
-        les rendements d'étapes sont **très optimistes** et servent de **borne haute**
-        pour explorer ce que donnerait un système parfaitement optimisé.
+        **Partie 1 : concepts de fusion (scénarios idéaux hypothétiques)**  
+        Rendements très optimistes → bornes hautes pédagogiques.
 
-        ⚠️ Ce ne sont **pas** des données expérimentales réelles, mais des modèles pédagogiques.
-
-        👉 La colonne clé est **“Conversion élec par kJ (kJ_out/kJ_in)”**, c’est-à-dire :
-        combien de kJ d’électricité on récupère pour 1 kJ d’électricité consommée.
+        👉 La colonne clé est **“Conversion élec par kJ (kJ_out/kJ_in)”** :  
+        combien de kJ d'électricité on récupère pour 1 kJ d'électricité consommée.
         """
     )
 
@@ -417,7 +416,7 @@ def ideal_scenarios_page():
     all_results = []
 
     for cfg_name, stages in IDEAL_SCENARIOS.items():
-        st.markdown(f"---\n### {cfg_name} — scénario idéal")
+        st.markdown(f"---\n### {cfg_name} — scénario idéal (fusion)")
 
         df, summary = compute_energy_chain(E_in_kJ, stages)
 
@@ -447,15 +446,10 @@ def ideal_scenarios_page():
         all_results.append({"Configuration": cfg_name, **summary})
 
     st.markdown("---")
-    st.subheader("Comparaison globale des scénarios idéaux (par kJ d'entrée)")
+    st.subheader("Comparaison globale des scénarios fusion (par kJ d'entrée)")
 
     if all_results:
         df_res = pd.DataFrame(all_results)
-        df_res = df_res.rename(
-            columns={
-                "Conversion élec par kJ (kJ_out/kJ_in)": "Conversion élec par kJ (kJ_out/kJ_in)",
-            }
-        )
         st.dataframe(
             df_res[
                 [
@@ -477,7 +471,41 @@ def ideal_scenarios_page():
             )
         )
 
-    # --- Conversion "centrale électrique" : kW, h -> MWh in / MWh out ---
+    # ====== PARTIE 2 : Centrales classiques (une ligne par techno) ======
+    st.markdown("---")
+    st.subheader("Centrales classiques : une ligne par technologie")
+
+    # 1 Wh = 3,6 kJ → kJ_in / Wh_out = 3,6 / eta
+    rows_classic = []
+    for plant in CLASSIC_PLANTS:
+        eta = plant["eta"]
+        kJ_per_Wh = 3.6 / eta if eta > 0 else np.nan
+        rows_classic.append({
+            "Technologie": plant["Technologie"],
+            "Rendement (%)": eta * 100.0,
+            "Conversion élec par kJ (kJ_out/kJ_in)": eta,
+            "kJ entrant / Wh sortant": kJ_per_Wh,
+        })
+
+    df_classic = pd.DataFrame(rows_classic)
+    st.dataframe(
+        df_classic.style.format({
+            "Rendement (%)": "{:.1f}",
+            "Conversion élec par kJ (kJ_out/kJ_in)": "{:.3f}",
+            "kJ entrant / Wh sortant": "{:.2f}",
+        })
+    )
+
+    st.markdown(
+        """
+        👉 **Charbon, gaz, fission** sont donc exprimés exactement comme les concepts de fusion :  
+        - une **conversion élec par kJ (kJ_out/kJ_in)**  
+        - un **rendement (%)**  
+        - et le ratio **kJ entrant / Wh sortant** sur **une seule ligne par technologie**.
+        """
+    )
+
+    # ====== PARTIE 3 : Centrale électrique complète (MWh in → MWh out) ======
     st.markdown("---")
     st.subheader("Interprétation centrale électrique (MWh entrants → MWh sortants)")
 
@@ -486,7 +514,7 @@ def ideal_scenarios_page():
         P_in_MW = st.number_input(
             "Puissance électrique entrante de la centrale (MW)",
             min_value=0.0,
-            value=1.0,  # 1 MW
+            value=20.0,  # ex : 20 MW
             key="plant_P_in_MW",
         )
     with colT:
@@ -497,7 +525,6 @@ def ideal_scenarios_page():
             key="plant_t_h",
         )
 
-    # Énergie électrique entrante de la centrale
     E_in_MWh_plant = P_in_MW * t_h
     E_in_kWh_plant = E_in_MWh_plant * 1000.0
 
@@ -531,7 +558,7 @@ def ideal_scenarios_page():
 
         st.markdown(
             """
-            👉 Pour chaque scénario, la colonne **“Conversion élec par kJ (kJ_out/kJ_in)”**  
+            👉 Pour chaque scénario de fusion, la colonne **“Conversion élec par kJ (kJ_out/kJ_in)”**  
             est exactement le même ratio que **MWh sortants / MWh entrants** à l’échelle de la centrale.
             """
         )
